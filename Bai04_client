@@ -1,0 +1,49 @@
+#include <stdio.h>
+#include <stdlib.h>
+#include <string.h>
+#include <arpa/inet.h>
+
+#define SERVER_IP "127.0.0.1"  // Địa chỉ IP của server
+#define SERVER_PORT 12345     // Cổng của server
+#define BUFFER_SIZE 1024      // Kích thước buffer
+
+int main() {
+    int client_socket;
+    struct sockaddr_in server_addr;
+    char buffer[BUFFER_SIZE];
+
+    // Khởi tạo socket
+    if ((client_socket = socket(AF_INET, SOCK_STREAM, 0)) < 0) {
+        perror("Không thể khởi tạo socket");
+        exit(EXIT_FAILURE);
+    }
+
+    // Thiết lập địa chỉ của server
+    server_addr.sin_family = AF_INET;
+    server_addr.sin_port = htons(SERVER_PORT);
+    server_addr.sin_addr.s_addr = inet_addr(SERVER_IP);
+
+    // Kết nối đến server
+    if (connect(client_socket, (struct sockaddr *)&server_addr, sizeof(server_addr)) < 0) {
+        perror("Không thể kết nối đến server");
+        exit(EXIT_FAILURE);
+    }
+
+    printf("Đã kết nối đến server.\n");
+
+    // Nhập dữ liệu từ bàn phím và gửi tới server
+    printf("Nhập dữ liệu để gửi tới server (nhập 'exit' để kết thúc): ");
+    while (1) {
+        fgets(buffer, BUFFER_SIZE, stdin);
+        send(client_socket, buffer, strlen(buffer), 0);
+        if (strcmp(buffer, "exit\n") == 0) {
+            printf("Đã kết thúc kết nối.\n");
+            break;
+        }
+    }
+
+    // Đóng kết nối
+    close(client_socket);
+
+    return 0;
+}
