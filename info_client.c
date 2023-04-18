@@ -53,12 +53,6 @@ int main() {
     }
      printf("Đã gửi dữ liệu thành công tới info_server\n");
 
-    // Nhan tin nhan tu server
-    char buf[2048];
-    int len = recv(client, buf, sizeof(buf), 0);
-    buf[len] = 0;
-    printf("Data received: %s\n", buf);
-
     // Ket thuc, dong socket
     close(client);
 
