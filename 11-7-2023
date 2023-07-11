@@ -1,0 +1,120 @@
+#include <stdio.h>
+#include <stdlib.h>
+#include <string.h>
+#include <sys/socket.h>
+#include <arpa/inet.h>
+#include <unistd.h>
+#include <pthread.h>
+
+#define MAX_CLIENTS 10
+#define BUFFER_SIZE 1024
+
+int client_sockets[MAX_CLIENTS];
+int client_count = 0;
+
+pthread_mutex_t mutex = PTHREAD_MUTEX_INITIALIZER;
+
+void broadcastMessage(char *message, int sender_socket) {
+    pthread_mutex_lock(&mutex);
+
+    for (int i = 0; i < client_count; i++) {
+        int client_socket = client_sockets[i];
+        if (client_socket != sender_socket) {
+            if (send(client_socket, message, strlen(message), 0) == -1) {
+                perror("Error sending message");
+            }
+        }
+    }
+
+    pthread_mutex_unlock(&mutex);
+}
+
+void *handleClient(void *arg) {
+    int client_socket = *(int *)arg;
+    char buffer[BUFFER_SIZE];
+
+    while (1) {
+        memset(buffer, 0, sizeof(buffer));
+        int bytes_read = recv(client_socket, buffer, sizeof(buffer), 0);
+        if (bytes_read <= 0) {
+            pthread_mutex_lock(&mutex);
+
+            for (int i = 0; i < client_count; i++) {
+                if (client_sockets[i] == client_socket) {
+                    client_count--;
+                    client_sockets[i] = client_sockets[client_count];
+                    break;
+                }
+            }
+
+            pthread_mutex_unlock(&mutex);
+
+            close(client_socket);
+            pthread_exit(NULL);
+        }
+
+        buffer[bytes_read] = '\0';
+        broadcastMessage(buffer, client_socket);
+    }
+}
+
+int main() {
+    int server_socket, client_socket;
+    struct sockaddr_in server_addr, client_addr;
+    pthread_t tid;
+
+    // Tạo socket
+    server_socket = socket(AF_INET, SOCK_STREAM, 0);
+    if (server_socket == -1) {
+        perror("Error creating socket");
+        exit(EXIT_FAILURE);
+    }
+
+    // Thiết lập địa chỉ cho server
+    server_addr.sin_family = AF_INET;
+    server_addr.sin_addr.s_addr = INADDR_ANY;
+    server_addr.sin_port = htons(8888);
+
+    // Ràng buộc địa chỉ với socket
+    if (bind(server_socket, (struct sockaddr *)&server_addr, sizeof(server_addr)) == -1) {
+        perror("Error binding address to socket");
+        exit(EXIT_FAILURE);
+    }
+
+    // Lắng nghe kết nối đến từ client
+    if (listen(server_socket, MAX_CLIENTS) == -1) {
+        perror("Error listening for connections");
+        exit(EXIT_FAILURE);
+    }
+
+    printf("Chat server started. Listening on port 8888...\n");
+
+    while (1) {
+        socklen_t client_addr_size = sizeof(client_addr);
+        client_socket = accept(server_socket, (struct sockaddr *)&client_addr, &client_addr_size);
+        if (client_socket == -1) {
+            perror("Error accepting connection");
+            continue;
+        }
+
+        if (client_count == MAX_CLIENTS) {
+            printf("Maximum number of clients reached. Rejecting new connection.\n");
+            close(client_socket);
+            continue;
+        }
+
+        pthread_mutex_lock(&mutex);
+
+        client_sockets[client_count] = client_socket;
+        client_count++;
+
+        pthread_mutex_unlock(&mutex);
+
+        printf("Client connected. Client IP: %s\n", inet_ntoa(client_addr.sin_addr));
+
+        pthread_create(&tid, NULL, handleClient, &client_socket);
+        pthread_detach(tid);
+    }
+
+    return 0;
+}
